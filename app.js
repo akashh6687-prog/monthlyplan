@@ -1,5 +1,4 @@
 const STORAGE_KEY = "iti-monthly-plan-maker-v2";
-const EXPORT_SERVICE_ORIGIN = "http://127.0.0.1:3210";
 const DEFAULT_STATE = {
   tradeValue: "D/CIVIL  2025-27    ( JUNIORS )  (II nd Shift)",
   monthValue: "2026-02",
@@ -21,7 +20,6 @@ const elements = {
   renderButton: document.getElementById("renderButton"),
   printButton: document.getElementById("printButton"),
   resetButton: document.getElementById("resetButton"),
-  downloadExcelButton: document.getElementById("downloadExcelButton"),
   statsPanel: document.getElementById("statsPanel"),
   tradeHeadingText: document.getElementById("tradeHeadingText"),
   monthHeadingText: document.getElementById("monthHeadingText"),
@@ -32,7 +30,6 @@ const elements = {
 
 let state = loadState();
 let currentPlan = null;
-let exportServiceReady = false;
 
 bootstrap();
 
@@ -41,7 +38,6 @@ function bootstrap() {
   bindEvents();
   syncOverrideDateOptions();
   renderEverything();
-  checkExportService();
 }
 
 function bindEvents() {
@@ -63,10 +59,9 @@ function bindEvents() {
   elements.renderButton.addEventListener("click", renderEverything);
   elements.printButton.addEventListener("click", () => {
     renderEverything();
-    setExportStatus("info", "Browser print opened with print-color styling enabled.");
+    setStatus("Browser print opened with print-color styling enabled.");
     window.print();
   });
-  elements.downloadExcelButton.addEventListener("click", downloadExcel);
 
   elements.resetButton.addEventListener("click", () => {
     const confirmed = window.confirm("Reset all inputs and remove saved data for this planner?");
@@ -78,7 +73,7 @@ function bindEvents() {
     persistState();
     syncFormWithState();
     syncOverrideDateOptions();
-    clearExportStatus();
+    clearStatus();
     renderEverything();
   });
 
@@ -96,7 +91,6 @@ function bindEvents() {
   });
 
   window.addEventListener("beforeprint", renderEverything);
-  window.addEventListener("focus", checkExportService);
 }
 
 function handleFormChange() {
@@ -311,111 +305,14 @@ function applySizing(totalDays) {
   elements.planPage.style.setProperty("--band-font-size", `${bandFontSize}px`);
 }
 
-async function downloadExcel() {
-  renderEverything();
-
-  if (!currentPlan) {
-    return;
-  }
-
-  const available = await ensureExportService();
-  if (!available) {
-    window.alert(
-      "Excel download needs the local export server.\n\nRun launch-monthly-plan.cmd in this folder, then try again.",
-    );
-    return;
-  }
-
-  const button = elements.downloadExcelButton;
-  const idleLabel = button.textContent;
-  button.disabled = true;
-  button.textContent = "Preparing Excel...";
-  setExportStatus("info", "Generating Excel file...");
-
-  try {
-    const response = await fetch(`${EXPORT_SERVICE_ORIGIN}/api/export/xlsx`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(currentPlan),
-    });
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(detail || `Export failed with status ${response.status}`);
-    }
-
-    const blob = await response.blob();
-    const fileName = getFileNameFromResponse(response, currentPlan);
-    downloadBlob(blob, fileName);
-    setExportStatus("success", "Excel download started.");
-  } catch (error) {
-    setExportStatus("error", error.message || "Export failed.");
-  } finally {
-    button.disabled = false;
-    button.textContent = idleLabel;
-  }
-}
-
-async function checkExportService() {
-  try {
-    const response = await fetch(`${EXPORT_SERVICE_ORIGIN}/health`, {
-      method: "GET",
-      cache: "no-store",
-    });
-
-    exportServiceReady = response.ok;
-  } catch {
-    exportServiceReady = false;
-  }
-
-  updateExportAvailability();
-}
-
-async function ensureExportService() {
-  if (exportServiceReady) {
-    return true;
-  }
-
-  await checkExportService();
-  return exportServiceReady;
-}
-
-function updateExportAvailability() {
-  elements.downloadExcelButton.disabled = !exportServiceReady;
-}
-
-function setExportStatus(type, message) {
+function setStatus(message, type = "") {
   elements.exportStatus.className = `export-status ${type === "error" ? "is-error" : ""} ${type === "success" ? "is-success" : ""}`.trim();
   elements.exportStatus.textContent = message;
 }
 
-function clearExportStatus() {
+function clearStatus() {
   elements.exportStatus.className = "export-status";
   elements.exportStatus.textContent = "";
-}
-
-function getFileNameFromResponse(response, viewModel) {
-  const disposition = response.headers.get("Content-Disposition") || "";
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  if (match) {
-    return match[1];
-  }
-
-  const monthPart = (viewModel.monthValue || "monthly-plan").replace(/[^0-9-]/g, "");
-  return `monthly-plan-${monthPart}.xlsx`;
-}
-
-function downloadBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 function buildSchedule() {

@@ -224,7 +224,7 @@ textarea {
   min-height: 1.3rem;
   font-size: 0.94rem;
   font-weight: 700;
-  color: #2c5e3e;
+  color: #24405f;
 }
 
 .export-status {
@@ -238,14 +238,6 @@ textarea {
 
 .export-status.is-success {
   color: #245938;
-}
-
-.button-secondary:disabled,
-button:disabled {
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-  opacity: 0.62;
 }
 
 .override-chip button {
@@ -388,10 +380,15 @@ button:disabled {
   word-break: normal;
 }
 
-.plan-table tbody td:nth-child(2),
 .plan-table tbody td:nth-child(4) {
   text-align: center;
   font-size: calc(var(--cell-font-size) - 0.45px);
+}
+
+.plan-table tbody td:nth-child(2) {
+  text-align: left;
+  font-size: calc(var(--cell-font-size) - 0.45px);
+  font-weight: 400;
 }
 
 .plan-table tbody td:first-child {
@@ -399,10 +396,6 @@ button:disabled {
   padding: 0 0.08rem;
   font-size: calc(var(--cell-font-size) - 1.15px);
   letter-spacing: -0.015em;
-}
-
-.plan-table tbody td:nth-child(2) {
-  font-weight: 700;
 }
 
 .plan-table tbody td:nth-child(3) {
@@ -414,7 +407,7 @@ button:disabled {
   white-space: nowrap;
 }
 
-.merged-cell {
+.plan-table tbody td.merged-cell {
   text-align: center;
   font-weight: 800;
 }
