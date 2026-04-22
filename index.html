@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ITI Monthly Plan Maker</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="controls-pane controls-pane--left">
+      <div class="controls-card">
+        <div class="hero">
+          <p class="eyebrow">Print-ready generator</p>
+          <h1>ITI Monthly Plan Maker</h1>
+        </div>
+
+        <section class="form-section form-section--wide">
+          <div class="section-heading">
+            <h2>Paste Excel Data</h2>
+          </div>
+
+          <div class="dual-paste-grid">
+            <label class="field">
+              <span>JOB NO. + PROFESSIONAL SKILL</span>
+              <textarea
+                id="skillDataInput"
+                rows="10"
+                placeholder="JOB NO.    PROFESSIONAL SKILL&#10;11.1    Type of arches&#10;11.1    Type of arches"
+              ></textarea>
+            </label>
+
+            <label class="field">
+              <span>LESSON NO. + PROFESSIONAL KNOWLEDGE</span>
+              <textarea
+                id="knowledgeDataInput"
+                rows="10"
+                placeholder="LESSON NO.    PROFESSIONAL KNOWLEDGE&#10;12.1.3    Uses, types of fixtures &amp; fastenings.&#10;13.1.1    Parts - DOORS"
+              ></textarea>
+            </label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-heading">
+            <h2>Day Overrides</h2>
+          </div>
+
+          <div class="override-grid">
+            <label class="field field--half">
+              <span>Date</span>
+              <select id="overrideDate"></select>
+            </label>
+
+            <label class="field field--half">
+              <span>Row style</span>
+              <select id="overrideType">
+                <option value="leave">Leave / Holiday (red)</option>
+                <option value="note-blue">Blue note</option>
+                <option value="note-dark">Dark blue note</option>
+              </select>
+            </label>
+
+            <label class="field field--full">
+              <span>Text shown on the row</span>
+              <input id="overrideLabel" type="text" autocomplete="off" placeholder="Festival leave / monthly test">
+            </label>
+          </div>
+
+          <div class="button-row">
+            <button id="addOverrideButton" type="button">Add or Update Day</button>
+          </div>
+
+          <div id="overrideList" class="override-list"></div>
+        </section>
+      </div>
+    </aside>
+
+    <main class="preview-pane">
+      <div class="preview-header">
+        <div>
+          <p class="eyebrow">A4 Preview</p>
+          <h2>Monthly Plan Sheet</h2>
+        </div>
+      </div>
+
+      <div class="page-stage">
+        <section id="planPage" class="plan-page">
+          <div class="plan-sheet">
+            <div class="plan-band plan-band--trade">
+              <span id="tradeHeadingText">TRADE : D/CIVIL 2025-27 ( JUNIORS ) (II nd Shift)</span>
+            </div>
+
+            <div class="plan-band plan-band--month">
+              <span id="monthHeadingText">MONTHLY PLAN - FEBRUARY -2026</span>
+            </div>
+
+            <table class="plan-table" aria-label="Monthly plan">
+              <colgroup>
+                <col class="col-date">
+                <col class="col-job">
+                <col class="col-skill">
+                <col class="col-lesson">
+                <col class="col-knowledge">
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">DATE</th>
+                  <th scope="col">JOB<br>NO.</th>
+                  <th scope="col">PROFESSIONAL SKILL</th>
+                  <th scope="col">LESSON<br>NO.</th>
+                  <th scope="col">PROFESSIONAL KNOWLEDGE</th>
+                </tr>
+              </thead>
+              <tbody id="planBody"></tbody>
+            </table>
+
+            <footer class="signature-strip">
+              <span>INSTRUCTOR</span>
+              <span>GROUP INSTRUCTOR</span>
+              <span>PRINCIPAL</span>
+            </footer>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <aside class="controls-pane controls-pane--right">
+      <div class="controls-card controls-card--compact">
+        <section class="form-section">
+          <div class="section-heading">
+            <h2>Plan Setup</h2>
+          </div>
+
+          <label class="field">
+            <span>Trade value</span>
+            <input id="tradeInput" type="text" autocomplete="off">
+          </label>
+
+          <label class="field">
+            <span>Month</span>
+            <input id="monthInput" type="month">
+          </label>
+        </section>
+
+        <section class="form-section form-section--actions">
+          <div class="section-heading">
+            <h2>Actions</h2>
+          </div>
+
+          <div class="button-row button-row--spread">
+            <button id="renderButton" type="button">Refresh Preview</button>
+            <button id="printButton" type="button" class="button-secondary">Print</button>
+            <button id="downloadExcelButton" type="button" class="button-secondary">Download Excel</button>
+            <button id="resetButton" type="button" class="button-ghost">Reset</button>
+          </div>
+
+          <div id="exportStatus" class="export-status" aria-live="polite"></div>
+          <div id="statsPanel" class="stats-panel"></div>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
