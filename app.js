@@ -18,6 +18,7 @@ const elements = {
   skillDataInput: document.getElementById("skillDataInput"),
   knowledgeDataInput: document.getElementById("knowledgeDataInput"),
   renderButton: document.getElementById("renderButton"),
+  downloadExcelButton: document.getElementById("downloadExcelButton"),
   printButton: document.getElementById("printButton"),
   resetButton: document.getElementById("resetButton"),
   statsPanel: document.getElementById("statsPanel"),
@@ -30,6 +31,23 @@ const elements = {
 
 let state = loadState();
 let currentPlan = null;
+const CRC32_TABLE = createCrc32Table();
+const XLSX_STYLE_IDS = {
+  trade: 1,
+  month: 2,
+  header: 3,
+  date: 4,
+  job: 5,
+  skill: 6,
+  lesson: 7,
+  knowledge: 8,
+  leave: 9,
+  exam: 10,
+  noteBlue: 11,
+  noteDark: 12,
+  blank: 13,
+  signature: 14,
+};
 
 bootstrap();
 
@@ -57,6 +75,7 @@ function bindEvents() {
   });
 
   elements.renderButton.addEventListener("click", renderEverything);
+  elements.downloadExcelButton.addEventListener("click", downloadExcelWorkbook);
   elements.printButton.addEventListener("click", () => {
     renderEverything();
     setStatus("Browser print opened with print-color styling enabled.");
@@ -313,6 +332,410 @@ function setStatus(message, type = "") {
 function clearStatus() {
   elements.exportStatus.className = "export-status";
   elements.exportStatus.textContent = "";
+}
+
+function downloadExcelWorkbook() {
+  renderEverything();
+
+  try {
+    const workbookBlob = buildMonthlyPlanWorkbookBlob(currentPlan);
+    const fileName = `${sanitizeFileName(currentPlan?.monthHeadingText || "MONTHLY PLAN")}.xlsx`;
+    downloadBlob(workbookBlob, fileName);
+    setStatus(`Excel file downloaded as ${fileName}.`, "success");
+  } catch (error) {
+    console.error(error);
+    setStatus("Excel download failed in the browser. Please try again.", "error");
+  }
+}
+
+function buildMonthlyPlanWorkbookBlob(viewModel) {
+  const files = [
+    { name: "[Content_Types].xml", data: createContentTypesXml() },
+    { name: "_rels/.rels", data: createRootRelationshipsXml() },
+    { name: "xl/workbook.xml", data: createWorkbookXml() },
+    { name: "xl/_rels/workbook.xml.rels", data: createWorkbookRelationshipsXml() },
+    { name: "xl/styles.xml", data: createStylesXml() },
+    { name: "xl/worksheets/sheet1.xml", data: createWorksheetXml(viewModel) },
+  ];
+
+  return createZipBlob(
+    files,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+}
+
+function createWorksheetXml(viewModel) {
+  const rowsXml = [];
+  const mergeRefs = ["A1:E1", "A2:E2"];
+  const totalDays = Math.max(viewModel?.meta?.totalDays || 0, 1);
+  const bodyRowHeightPt = clampNumber((209 / totalDays) * 2.834645669, 17, 22);
+
+  rowsXml.push(createRowXml(1, 23, [
+    createInlineStringCell("A1", viewModel.tradeHeadingText, XLSX_STYLE_IDS.trade),
+  ]));
+
+  rowsXml.push(createRowXml(2, 27, [
+    createInlineStringCell("A2", viewModel.monthHeadingText, XLSX_STYLE_IDS.month),
+  ]));
+
+  rowsXml.push(createRowXml(3, 26, [
+    createInlineStringCell("A3", "DATE", XLSX_STYLE_IDS.header),
+    createInlineStringCell("B3", "JOB\nNO.", XLSX_STYLE_IDS.header),
+    createInlineStringCell("C3", "PROFESSIONAL SKILL", XLSX_STYLE_IDS.header),
+    createInlineStringCell("D3", "LESSON\nNO.", XLSX_STYLE_IDS.header),
+    createInlineStringCell("E3", "PROFESSIONAL KNOWLEDGE", XLSX_STYLE_IDS.header),
+  ]));
+
+  let rowIndex = 4;
+
+  viewModel.rows.forEach((row) => {
+    if (row.type === "work") {
+      rowsXml.push(createRowXml(rowIndex, bodyRowHeightPt, [
+        createInlineStringCell(`A${rowIndex}`, row.dateLabel, XLSX_STYLE_IDS.date),
+        createInlineStringCell(`B${rowIndex}`, row.jobNo, XLSX_STYLE_IDS.job),
+        createInlineStringCell(`C${rowIndex}`, row.professionalSkill, XLSX_STYLE_IDS.skill),
+        createInlineStringCell(`D${rowIndex}`, row.lessonNo, XLSX_STYLE_IDS.lesson),
+        createInlineStringCell(`E${rowIndex}`, row.professionalKnowledge, XLSX_STYLE_IDS.knowledge),
+      ]));
+    } else if (row.type === "blank") {
+      rowsXml.push(createRowXml(rowIndex, bodyRowHeightPt, [
+        createInlineStringCell(`A${rowIndex}`, row.dateLabel, XLSX_STYLE_IDS.date),
+        createEmptyCell(`B${rowIndex}`, XLSX_STYLE_IDS.blank),
+        createEmptyCell(`C${rowIndex}`, XLSX_STYLE_IDS.blank),
+        createEmptyCell(`D${rowIndex}`, XLSX_STYLE_IDS.blank),
+        createEmptyCell(`E${rowIndex}`, XLSX_STYLE_IDS.blank),
+      ]));
+    } else {
+      mergeRefs.push(`B${rowIndex}:E${rowIndex}`);
+      rowsXml.push(createRowXml(rowIndex, bodyRowHeightPt, [
+        createInlineStringCell(`A${rowIndex}`, row.dateLabel, XLSX_STYLE_IDS.date),
+        createInlineStringCell(`B${rowIndex}`, row.label, getMergedRowStyleId(row.type)),
+      ]));
+    }
+
+    rowIndex += 1;
+  });
+
+  rowsXml.push(createRowXml(rowIndex, 14, [
+    createEmptyCell(`A${rowIndex}`, XLSX_STYLE_IDS.blank),
+    createEmptyCell(`B${rowIndex}`, XLSX_STYLE_IDS.blank),
+    createEmptyCell(`C${rowIndex}`, XLSX_STYLE_IDS.blank),
+    createEmptyCell(`D${rowIndex}`, XLSX_STYLE_IDS.blank),
+    createEmptyCell(`E${rowIndex}`, XLSX_STYLE_IDS.blank),
+  ]));
+  rowIndex += 1;
+
+  mergeRefs.push(`A${rowIndex}:B${rowIndex}`, `C${rowIndex}:D${rowIndex}`);
+  rowsXml.push(createRowXml(rowIndex, 26, [
+    createInlineStringCell(`A${rowIndex}`, "INSTRUCTOR", XLSX_STYLE_IDS.signature),
+    createInlineStringCell(`C${rowIndex}`, "GROUP INSTRUCTOR", XLSX_STYLE_IDS.signature),
+    createInlineStringCell(`E${rowIndex}`, "PRINCIPAL", XLSX_STYLE_IDS.signature),
+  ]));
+
+  const lastRow = rowIndex;
+  const mergesXml = mergeRefs.length
+    ? `<mergeCells count="${mergeRefs.length}">${mergeRefs.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>`
+    : "";
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <dimension ref="A1:E${lastRow}"/>
+  <sheetViews>
+    <sheetView workbookViewId="0">
+      <pane ySplit="3" topLeftCell="A4" activePane="bottomLeft" state="frozen"/>
+      <selection pane="bottomLeft" activeCell="A4" sqref="A4"/>
+    </sheetView>
+  </sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols>
+    <col min="1" max="1" width="12.5" customWidth="1"/>
+    <col min="2" max="2" width="9.5" customWidth="1"/>
+    <col min="3" max="3" width="34" customWidth="1"/>
+    <col min="4" max="4" width="10.5" customWidth="1"/>
+    <col min="5" max="5" width="36" customWidth="1"/>
+  </cols>
+  <sheetData>${rowsXml.join("")}</sheetData>
+  ${mergesXml}
+  <pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.2" footer="0.2"/>
+  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>
+</worksheet>`;
+}
+
+function createContentTypesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+}
+
+function createRootRelationshipsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+}
+
+function createWorkbookXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews>
+    <workbookView xWindow="0" yWindow="0" windowWidth="24000" windowHeight="12840"/>
+  </bookViews>
+  <sheets>
+    <sheet name="Monthly Plan" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+}
+
+function createWorkbookRelationshipsXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+}
+
+function createStylesXml() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font>
+      <sz val="11"/>
+      <name val="Arial"/>
+      <family val="2"/>
+    </font>
+    <font>
+      <b/>
+      <sz val="11"/>
+      <name val="Arial"/>
+      <family val="2"/>
+    </font>
+  </fonts>
+  <fills count="8">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFDCE8F5"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFF7C9A7"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFD8E7D0"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFFF9FA4"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FFB7C9EA"/><bgColor indexed="64"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF92B6DB"/><bgColor indexed="64"/></patternFill></fill>
+  </fills>
+  <borders count="2">
+    <border>
+      <left/>
+      <right/>
+      <top/>
+      <bottom/>
+      <diagonal/>
+    </border>
+    <border>
+      <left style="thin"><color rgb="FF303030"/></left>
+      <right style="thin"><color rgb="FF303030"/></right>
+      <top style="thin"><color rgb="FF303030"/></top>
+      <bottom style="thin"><color rgb="FF303030"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="15">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+    <xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+  </cellXfs>
+  <cellStyles count="1">
+    <cellStyle name="Normal" xfId="0" builtinId="0"/>
+  </cellStyles>
+</styleSheet>`;
+}
+
+function createZipBlob(files, mimeType) {
+  const encoder = new TextEncoder();
+  const zipParts = [];
+  const centralDirectoryParts = [];
+  let offset = 0;
+
+  files.forEach((file) => {
+    const nameBytes = encoder.encode(file.name);
+    const dataBytes = typeof file.data === "string" ? encoder.encode(file.data) : file.data;
+    const checksum = crc32(dataBytes);
+    const { dosDate, dosTime } = getZipDateParts(new Date());
+
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, dosTime, true);
+    localView.setUint16(12, dosDate, true);
+    localView.setUint32(14, checksum, true);
+    localView.setUint32(18, dataBytes.length, true);
+    localView.setUint32(22, dataBytes.length, true);
+    localView.setUint16(26, nameBytes.length, true);
+    localView.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+
+    const centralHeader = new Uint8Array(46 + nameBytes.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, dosTime, true);
+    centralView.setUint16(14, dosDate, true);
+    centralView.setUint32(16, checksum, true);
+    centralView.setUint32(20, dataBytes.length, true);
+    centralView.setUint32(24, dataBytes.length, true);
+    centralView.setUint16(28, nameBytes.length, true);
+    centralView.setUint16(30, 0, true);
+    centralView.setUint16(32, 0, true);
+    centralView.setUint16(34, 0, true);
+    centralView.setUint16(36, 0, true);
+    centralView.setUint32(38, 0, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(nameBytes, 46);
+
+    zipParts.push(localHeader, dataBytes);
+    centralDirectoryParts.push(centralHeader);
+    offset += localHeader.length + dataBytes.length;
+  });
+
+  const centralDirectorySize = centralDirectoryParts.reduce((total, part) => total + part.length, 0);
+  const endRecord = new Uint8Array(22);
+  const endView = new DataView(endRecord.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(4, 0, true);
+  endView.setUint16(6, 0, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralDirectorySize, true);
+  endView.setUint32(16, offset, true);
+  endView.setUint16(20, 0, true);
+
+  return new Blob([...zipParts, ...centralDirectoryParts, endRecord], { type: mimeType });
+}
+
+function createRowXml(rowNumber, heightPt, cells) {
+  const height = Number.isFinite(heightPt) ? ` ht="${heightPt.toFixed(2)}" customHeight="1"` : "";
+  return `<row r="${rowNumber}"${height}>${cells.join("")}</row>`;
+}
+
+function createInlineStringCell(cellRef, text, styleId) {
+  return `<c r="${cellRef}" s="${styleId}" t="inlineStr"><is><t xml:space="preserve">${escapeXml(text || "")}</t></is></c>`;
+}
+
+function createEmptyCell(cellRef, styleId) {
+  return `<c r="${cellRef}" s="${styleId}"/>`;
+}
+
+function getMergedRowStyleId(type) {
+  if (type === "leave") {
+    return XLSX_STYLE_IDS.leave;
+  }
+  if (type === "exam") {
+    return XLSX_STYLE_IDS.exam;
+  }
+  if (type === "note-dark") {
+    return XLSX_STYLE_IDS.noteDark;
+  }
+  return XLSX_STYLE_IDS.noteBlue;
+}
+
+function sanitizeFileName(value) {
+  const cleaned = String(value || "MONTHLY PLAN")
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+
+  return cleaned || "MONTHLY PLAN";
+}
+
+function downloadBlob(blob, fileName) {
+  const link = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+
+  link.href = objectUrl;
+  link.download = fileName;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+
+  window.setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  }, 1200);
+}
+
+function escapeXml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getZipDateParts(date) {
+  const safeYear = Math.max(date.getFullYear(), 1980);
+  const dosTime =
+    (date.getHours() << 11)
+    | (date.getMinutes() << 5)
+    | Math.floor(date.getSeconds() / 2);
+  const dosDate =
+    ((safeYear - 1980) << 9)
+    | ((date.getMonth() + 1) << 5)
+    | date.getDate();
+
+  return { dosDate, dosTime };
+}
+
+function createCrc32Table() {
+  const table = new Uint32Array(256);
+
+  for (let index = 0; index < 256; index += 1) {
+    let value = index;
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value & 1) ? (0xedb88320 ^ (value >>> 1)) : (value >>> 1);
+    }
+    table[index] = value >>> 0;
+  }
+
+  return table;
+}
+
+function crc32(bytes) {
+  let crc = 0xffffffff;
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    crc = CRC32_TABLE[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 function buildSchedule() {
